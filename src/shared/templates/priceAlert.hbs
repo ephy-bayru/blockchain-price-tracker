@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Price Alert: {{tokenName}}</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333333;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f4f4f4;
+        }
+
+        h1 {
+            color: #3498db;
+        }
+
+        .info-box {
+            background-color: #ffffff;
+            border: 1px solid #3498db;
+            border-radius: 5px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+
+        .cta-button {
+            display: inline-block;
+            padding: 10px 20px;
+            background-color: #3498db;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+        }
+
+        .increase {
+            color: #2ecc71;
+        }
+
+        .decrease {
+            color: #e74c3c;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Price Alert: {{tokenName}}</h1>
+    <div class="info-box">
+        <p class="price-change {{#if isIncrease}}increase{{else}}decrease{{/if}}">
+            {{#if isIncrease}}▲{{else}}▼{{/if}} {{percentageChange}}%
+        </p>
+        <p><strong>Current price:</strong> ${{formatNumber price 2}}</p>
+        <p><strong>Previous price:</strong> ${{formatNumber previousPrice 2}}</p>
+        <p><strong>Change:</strong> ${{formatNumber priceChange 2}}</p>
+        <p><strong>24h High:</strong> ${{formatNumber dayHigh 2}}</p>
+        <p><strong>24h Low:</strong> ${{formatNumber dayLow 2}}</p>
+    </div>
+    <p>
+        <a href="{{tokenUrl}}" class="cta-button">View More Details</a>
+    </p>
+    <p>To update your alert settings, <a href="{{alertSettingsUrl}}">click here</a>.</p>
+</body>
+
+</html>

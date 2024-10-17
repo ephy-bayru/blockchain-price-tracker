@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Swap Rate Information: {{fromToken}} to {{toToken}}</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333333;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f4f4f4;
+        }
+
+        h1,
+        h2 {
+            color: #3498db;
+        }
+
+        .info-box {
+            background-color: #ffffff;
+            border: 1px solid #3498db;
+            border-radius: 5px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+
+        .cta-button {
+            display: inline-block;
+            padding: 10px 20px;
+            background-color: #3498db;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+        }
+
+        .increase {
+            color: #2ecc71;
+        }
+
+        .decrease {
+            color: #e74c3c;
+        }
+
+        .swap-rate {
+            font-size: 24px;
+            font-weight: bold;
+            color: #3498db;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Swap Rate Information</h1>
+    <div class="info-box">
+        <p class="swap-rate">1 {{fromToken}} = {{formatNumber swapRate 6}} {{toToken}}</p>
+        <p><strong>Amount to Swap:</strong> {{formatNumber fromAmount 4}} {{fromToken}}</p>
+        <p><strong>You will receive:</strong> {{formatNumber toAmount 4}} {{toToken}}</p>
+    </div>
+    <h2>Fees</h2>
+    <div class="info-box">
+        <p><strong>Network Fee:</strong> {{formatNumber networkFee 4}} {{fromToken}} (${formatNumber networkFeeUsd 2}})
+        </p>
+        <p><strong>Our Fee:</strong> {{formatNumber ourFee 4}} {{fromToken}} (${formatNumber ourFeeUsd 2}})</p>
+        <p><strong>Total Fee:</strong> {{formatNumber totalFee 4}} {{fromToken}} (${formatNumber totalFeeUsd 2}})</p>
+    </div>
+    <h2>24h Price Change</h2>
+    <div class="info-box">
+        <p>{{fromToken}}: <span
+                class="{{#if (gt fromTokenPriceChange 0)}}increase{{else}}decrease{{/if}}">{{formatNumber
+                fromTokenPriceChange 2}}%</span></p>
+        <p>{{toToken}}: <span class="{{#if (gt toTokenPriceChange 0)}}increase{{else}}decrease{{/if}}">{{formatNumber
+                toTokenPriceChange 2}}%</span></p>
+    </div>
+    <p>
+        <a href="{{swapUrl}}" class="cta-button">Perform This Swap</a>
+    </p>
+    <p>To view more trading pairs, <a href="{{tradingPairsUrl}}">click here</a>.</p>
+</body>
+
+</html>
