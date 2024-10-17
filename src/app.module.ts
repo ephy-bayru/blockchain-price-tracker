@@ -1,8 +1,7 @@
 import { Module } from '@nestjs/common';
-import { ThrottlerModule } from '@nestjs/throttler';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_INTERCEPTOR, APP_GUARD } from '@nestjs/core';
-import { ThrottlerGuard } from '@nestjs/throttler';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { CommonModule } from './common/common.module';
@@ -11,6 +10,7 @@ import appConfig from './config/app.config';
 import { LoggingInterceptor } from './common/services/logging.interceptor';
 import throttlerConfig from './config/throttler.config';
 import { HealthModule } from './modules/health/health.module';
+import { SharedModule } from './shared/shared.module';
 
 @Module({
   imports: [
@@ -28,6 +28,7 @@ import { HealthModule } from './modules/health/health.module';
     HealthModule,
     CommonModule,
     DatabaseModule,
+    SharedModule,
   ],
   controllers: [AppController],
   providers: [
