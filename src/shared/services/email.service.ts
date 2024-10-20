@@ -5,7 +5,8 @@ import * as handlebars from 'handlebars';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { format } from 'date-fns';
-import { LoggerService } from 'src/common/services/logger.service';
+import { LoggerService } from '../../common/services/logger.service';
+import { ChainEnum } from '../../modules/price-tracker/enums/chain.enum';
 
 @Injectable()
 export class EmailService implements OnModuleInit {
@@ -59,14 +60,42 @@ export class EmailService implements OnModuleInit {
     ];
 
     for (const name of templateNames) {
-      const templatePath = path.join(
-        __dirname,
-        '..',
-        'templates',
-        `${name}.hbs`,
-      );
-      const templateSource = await fs.readFile(templatePath, 'utf-8');
-      this.templates.set(name, handlebars.compile(templateSource));
+      try {
+        let templatePath = path.join(
+          __dirname,
+          '..',
+          '..',
+          'shared',
+          'templates',
+          `${name}.hbs`,
+        );
+
+        // If the file doesn't exist in the dist folder, try the src folder
+        if (!(await this.fileExists(templatePath))) {
+          templatePath = path.join(
+            __dirname,
+            '..',
+            '..',
+            '..',
+            'src',
+            'shared',
+            'templates',
+            `${name}.hbs`,
+          );
+        }
+
+        if (!(await this.fileExists(templatePath))) {
+          throw new Error(`Template file not found: ${name}.hbs`);
+        }
+
+        const templateSource = await fs.readFile(templatePath, 'utf-8');
+        this.templates.set(name, handlebars.compile(templateSource));
+      } catch (error) {
+        this.logger.error(`Failed to load template: ${name}`, 'EmailService', {
+          error,
+        });
+        throw error;
+      }
     }
 
     // Register helpers
@@ -91,6 +120,15 @@ export class EmailService implements OnModuleInit {
     );
 
     this.logger.info('Email templates loaded successfully', 'EmailService');
+  }
+
+  private async fileExists(filePath: string): Promise<boolean> {
+    try {
+      await fs.access(filePath);
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   async sendEmail(
@@ -164,5 +202,66 @@ export class EmailService implements OnModuleInit {
       'swapRateInfo',
       context,
     );
+  }
+
+  async sendSignificantPriceChangeAlert(
+    to: string,
+    chain: ChainEnum,
+    changes: Array<{
+      tokenAddress: string;
+      percentageChange: number;
+      currentPrice: number;
+    }>,
+  ) {
+    try {
+      const context = {
+        chain,
+        changes,
+        isMultipleTokens: true,
+      };
+      return await this.sendPriceAlert(to, context);
+    } catch (error) {
+      this.logger.error(
+        'Failed to send significant price change alert',
+        'EmailService',
+        { error, to, chain, changesCount: changes.length },
+      );
+      throw error;
+    }
+  }
+
+  async sendUserPriceAlert(
+    to: string,
+    tokenAddress: string,
+    chain: ChainEnum,
+    currentPrice: number,
+    targetPrice: number,
+    condition: 'above' | 'below',
+  ) {
+    try {
+      const context = {
+        tokenName: tokenAddress, // We can replace this with actual token name if available
+        chain,
+        price: currentPrice,
+        previousPrice: targetPrice,
+        isIncrease: condition === 'above',
+        percentageChange: ((currentPrice - targetPrice) / targetPrice) * 100,
+        priceChange: currentPrice - targetPrice,
+        isUserAlert: true,
+        condition,
+      };
+      return await this.sendPriceAlert(to, context);
+    } catch (error) {
+      this.logger.error('Failed to send user price alert', 'EmailService', {
+        error,
+        to,
+        tokenAddress,
+        chain,
+        currentPrice,
+        targetPrice,
+        condition,
+      });
+      throw error;
+    }
   }
 }
