@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>New Token Listed: {{tokenName}}</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333333;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f4f4f4;
+        }
+
+        h1,
+        h2 {
+            color: #3498db;
+        }
+
+        .info-box {
+            background-color: #ffffff;
+            border: 1px solid #3498db;
+            border-radius: 5px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+
+        .cta-button {
+            display: inline-block;
+            padding: 10px 20px;
+            background-color: #3498db;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>New Token Listed: {{tokenName}}</h1>
+    <div class="info-box">
+        <p><strong>Token Name:</strong> {{tokenName}}</p>
+        <p><strong>Symbol:</strong> {{tokenSymbol}}</p>
+        <p><strong>Initial Price:</strong> ${{formatNumber initialPrice 4}}</p>
+        <p><strong>Blockchain:</strong> {{blockchain}}</p>
+    </div>
+    <h2>Token Description</h2>
+    <p>{{tokenDescription}}</p>
+    <h2>Trading Pairs</h2>
+    <ul>
+        {{#each tradingPairs}}
+        <li>{{this}}</li>
+        {{/each}}
+    </ul>
+    <p>
+        <a href="{{tokenUrl}}" class="cta-button">View Token Details</a>
+    </p>
+    <p>To set price alerts for this token, <a href="{{alertSettingsUrl}}">click here</a>.</p>
+</body>
+
+</html>

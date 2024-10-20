@@ -1,0 +1,38 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Debug NestJS (Node)",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["--inspect", "-r", "ts-node/register", "-r", "dotenv/config"],
+      "args": ["${workspaceFolder}/src/main.ts"],
+      "autoAttachChildProcesses": true,
+      "sourceMaps": true,
+      "envFile": "${workspaceFolder}/.env",
+      "cwd": "${workspaceRoot}",
+      "console": "integratedTerminal",
+      "protocol": "inspector"
+    },
+    {
+      "type": "firefox",
+      "request": "attach",
+      "name": "Debug NestJS (Firefox)",
+      "url": "http://localhost:3000",
+      "webRoot": "${workspaceFolder}",
+      "pathMappings": [
+        {
+          "url": "webpack:///src",
+          "path": "${workspaceFolder}/src"
+        }
+      ]
+    }
+  ],
+  "compounds": [
+    {
+      "name": "Debug NestJS (Node + Firefox)",
+      "configurations": ["Debug NestJS (Node)", "Debug NestJS (Firefox)"]
+    }
+  ]
+}

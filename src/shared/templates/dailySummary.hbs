@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Daily Cryptocurrency Price Summary</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333333;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f4f4f4;
+        }
+
+        h1 {
+            color: #3498db;
+        }
+
+        .cta-button {
+            display: inline-block;
+            padding: 10px 20px;
+            background-color: #3498db;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+        }
+
+        .increase {
+            color: #2ecc71;
+        }
+
+        .decrease {
+            color: #e74c3c;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background-color: #ffffff;
+        }
+
+        th {
+            background-color: #3498db;
+            color: white;
+            padding: 10px;
+            text-align: left;
+        }
+
+        td {
+            padding: 10px;
+            border-bottom: 1px solid #f4f4f4;
+        }
+
+        tr:nth-child(even) {
+            background-color: #f8f8f8;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Daily Cryptocurrency Price Summary</h1>
+    <p>For {{formatDate date "MMMM D, YYYY"}}</p>
+    <table>
+        <tr>
+            <th>Token</th>
+            <th>Price</th>
+            <th>24h Change</th>
+            <th>7d Change</th>
+        </tr>
+        {{#each tokens}}
+        <tr>
+            <td>{{name}} ({{symbol}})</td>
+            <td>${{formatNumber currentPrice 2}}</td>
+            <td class="{{#if (gt dayChange 0)}}increase{{else}}decrease{{/if}}">
+                {{formatNumber dayChange 2}}%
+            </td>
+            <td class="{{#if (gt weekChange 0)}}increase{{else}}decrease{{/if}}">
+                {{formatNumber weekChange 2}}%
+            </td>
+        </tr>
+        {{/each}}
+    </table>
+    <p>
+        <a href="{{marketAnalysisUrl}}" class="cta-button">View Detailed Market Analysis</a>
+    </p>
+    <p>To manage your daily summary settings, <a href="{{summarySettingsUrl}}">click here</a>.</p>
+</body>
+
+</html>

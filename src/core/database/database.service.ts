@@ -1,6 +1,6 @@
 import { Injectable, OnApplicationShutdown } from '@nestjs/common';
-import { LoggerService } from 'src/common/services/logger.service';
 import { DataSource } from 'typeorm';
+import { DatabaseLoggerService } from '../services/database-logger.service';
 
 @Injectable()
 export class DatabaseService implements OnApplicationShutdown {
@@ -9,7 +9,7 @@ export class DatabaseService implements OnApplicationShutdown {
 
   constructor(
     private readonly dataSource: DataSource,
-    private readonly logger: LoggerService,
+    private readonly logger: DatabaseLoggerService,
   ) {}
 
   async onApplicationShutdown(signal?: string): Promise<void> {
