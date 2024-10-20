@@ -1,15 +1,11 @@
-import {
-  Injectable,
-  LoggerService as NestLoggerService,
-  Scope,
-} from '@nestjs/common';
+import { Injectable, LoggerService as NestLoggerService } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
 export type LogLevel = 'error' | 'warn' | 'info' | 'debug' | 'verbose';
 
 const logLevels: LogLevel[] = ['error', 'warn', 'info', 'debug', 'verbose'];
 
-@Injectable({ scope: Scope.TRANSIENT })
+@Injectable()
 export class LoggerService implements NestLoggerService {
   private currentLogLevel: LogLevel;
 
