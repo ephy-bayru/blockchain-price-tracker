@@ -46,3 +46,25 @@ export interface TokenPriceRequest {
   exchange?: string;
   to_block?: string;
 }
+
+export interface MoralisError extends Error {
+  code?: string;
+  status?: number;
+  response?: {
+    status: number;
+    data: any;
+    headers?: Record<string, string>;
+  };
+}
+
+export interface RetryConfig {
+  maxRetries: number;
+  baseDelay: number;
+  maxDelay: number;
+  timeout: number;
+}
+
+export interface RateLimitConfig {
+  maxRequests: number;
+  windowMs: number;
+}
