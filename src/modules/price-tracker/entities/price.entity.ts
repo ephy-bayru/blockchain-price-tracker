@@ -11,23 +11,25 @@ import {
 import { Token } from './token.entity';
 
 @Entity('prices')
-@Index(['token', 'timestamp'])
+@Index('IDX_price_token_time', ['tokenId', 'timestamp'])
 export class Price {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @ManyToOne(() => Token, (token) => token.prices)
+  @Column('uuid')
+  tokenId: string;
+
+  @ManyToOne(() => Token, (token) => token.prices, {
+    onDelete: 'CASCADE',
+  })
   @JoinColumn({ name: 'tokenId' })
   token: Token;
-
-  @Column()
-  tokenId: string;
 
   @Column('decimal', { precision: 18, scale: 8 })
   usdPrice: number;
 
   @Column('timestamp')
-  @Index()
+  @Index('IDX_price_timestamp')
   timestamp: Date;
 
   @Column('decimal', { precision: 5, scale: 2, nullable: true })
@@ -36,9 +38,9 @@ export class Price {
   @Column('decimal', { precision: 5, scale: 2, nullable: true })
   percentageChange24h: number;
 
-  @CreateDateColumn()
+  @CreateDateColumn({ type: 'timestamp' })
   createdAt: Date;
 
-  @UpdateDateColumn()
+  @UpdateDateColumn({ type: 'timestamp' })
   updatedAt: Date;
 }
