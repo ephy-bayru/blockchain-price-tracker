@@ -1,9 +1,9 @@
 export interface TokenPrice {
-  tokenName: string;
-  tokenSymbol: string;
-  tokenLogo: string;
-  tokenDecimals: string;
-  nativePrice: {
+  tokenName?: string;
+  tokenSymbol?: string;
+  tokenLogo?: string;
+  tokenDecimals?: string;
+  nativePrice?: {
     value: string;
     decimals: number;
     name: string;
@@ -11,18 +11,19 @@ export interface TokenPrice {
     address: string;
   };
   usdPrice: number;
-  usdPriceFormatted: string;
-  exchangeName: string;
-  exchangeAddress: string;
+  usdPriceFormatted?: string;
+  exchangeName?: string;
+  exchangeAddress?: string;
   tokenAddress: string;
-  priceLastChangedAtBlock: string;
-  blockTimestamp: string;
-  possibleSpam: boolean;
-  verifiedContract: boolean;
-  pairAddress: string;
-  pairTotalLiquidityUsd: string;
+  priceLastChangedAtBlock?: string;
+  blockTimestamp?: string;
+  possibleSpam?: boolean;
+  verifiedContract?: boolean;
+  pairAddress?: string;
+  pairTotalLiquidityUsd?: string;
+  '24hrPercentChange'?: string;
   '1hrPercentChange'?: string;
-  securityScore: number;
+  securityScore?: number;
 }
 
 export interface TokenMetadata {
@@ -34,11 +35,14 @@ export interface TokenMetadata {
   logo_hash?: string;
   thumbnail?: string;
   block_number?: string;
-  validated?: boolean;
+  validated?: boolean | number;
+  created_at?: string;
+  possible_spam?: boolean;
+  verified_contract?: boolean;
 }
 
 export interface TokenPriceRequest {
-  token_address: string;
+  address: string;
   exchange?: string;
   to_block?: string;
 }

@@ -1,9 +1,14 @@
-import { Injectable, HttpException, HttpStatus } from '@nestjs/common';
+import {
+  Injectable,
+  HttpException,
+  HttpStatus,
+  OnModuleInit,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { HttpService } from '@nestjs/axios';
-import { Observable, catchError, map, throwError } from 'rxjs';
-import { AxiosError, AxiosRequestConfig } from 'axios';
+import { Observable, from, throwError } from 'rxjs';
+import { map, catchError } from 'rxjs/operators';
 import { LoggerService } from 'src/common/services/logger.service';
+import Moralis from 'moralis';
 import {
   TokenMetadata,
   TokenPrice,
@@ -11,23 +16,26 @@ import {
 } from '../interfaces/IToken';
 
 @Injectable()
-export class MoralisService {
+export class MoralisService implements OnModuleInit {
   private readonly apiKey: string;
-  private readonly baseUrl: string = 'https://deep-index.moralis.io/api/v2.2';
+  private readonly baseUrl: string;
   private readonly chains: Record<string, string>;
 
   constructor(
     private readonly configService: ConfigService,
-    private readonly httpService: HttpService,
     private readonly logger: LoggerService,
   ) {
-    this.apiKey = this.configService.get<string>('MORALIS_API_KEY');
-    this.chains = {
-      ethereum: 'eth',
-      polygon: 'polygon',
-    };
+    const moralisConfig = this.configService.get('moralis');
+    this.apiKey = moralisConfig.apiKey;
+    this.baseUrl = moralisConfig.baseUrl;
+    this.chains = moralisConfig.chains;
 
     this.logServiceInitialization();
+  }
+
+  async onModuleInit() {
+    await Moralis.start({ apiKey: this.apiKey });
+    this.logger.info('Moralis SDK initialized', 'MoralisService');
   }
 
   getTokenPrice(chain: string, address: string): Observable<TokenPrice> {
@@ -35,75 +43,79 @@ export class MoralisService {
       chain,
       address,
     });
-    return this.makeRequest<TokenPrice>({
-      method: 'get',
-      url: `/erc20/${address}/price`,
-      params: { chain: this.validateChain(chain), include: 'percent_change' },
-    });
+    return from(
+      Moralis.EvmApi.token.getTokenPrice({
+        chain: this.validateChain(chain),
+        address,
+        include: 'percent_change',
+      }),
+    ).pipe(
+      map((response) => response.raw as TokenPrice),
+      catchError(this.handleError('getTokenPrice')),
+    );
   }
 
   getMultipleTokenPrices(
     chain: string,
-    addresses: string[],
+    tokens: TokenPriceRequest[],
   ): Observable<TokenPrice[]> {
     this.logger.info('Fetching multiple token prices', 'MoralisService', {
       chain,
-      addressCount: addresses.length,
+      tokenCount: tokens.length,
     });
-    const tokens: TokenPriceRequest[] = addresses.map((address) => ({
-      token_address: address,
-    }));
-    return this.makeRequest<TokenPrice[]>({
-      method: 'post',
-      url: '/erc20/prices',
-      data: { tokens },
-      params: { chain: this.validateChain(chain), include: 'percent_change' },
-    });
-  }
 
-  getTokenMetadata(chain: string, address: string): Observable<TokenMetadata> {
-    this.logger.info('Fetching token metadata', 'MoralisService', {
-      chain,
-      address,
-    });
-    return this.makeRequest<TokenMetadata>({
-      method: 'get',
-      url: `/erc20/${address}`,
-      params: { chain: this.validateChain(chain) },
-    });
-  }
-
-  private makeRequest<T>(config: AxiosRequestConfig): Observable<T> {
-    const fullConfig: AxiosRequestConfig = {
-      ...config,
-      url: `${this.baseUrl}${config.url}`,
-      headers: this.getHeaders(),
+    // Prepare the request and body with correct structure
+    const request = {
+      chain: this.validateChain(chain),
     };
 
-    // Log full URL, method, headers, and request data
-    this.logger.debug('Making API request', 'MoralisService', {
-      method: fullConfig.method,
-      url: fullConfig.url,
-      headers: fullConfig.headers,
-      params: fullConfig.params,
-      data: fullConfig.data || null,
-    });
-
-    return this.httpService.request<T>(fullConfig).pipe(
-      map((response) => {
-        this.logSuccessfulRequest(config.url, response.data);
-        return response.data;
+    const body = {
+      tokens: tokens.map((token) => ({
+        tokenAddress: token.address,
+        exchange: token.exchange,
+        toBlock: token.to_block,
+        toJSON: () => ({
+          tokenAddress: token.address,
+          exchange: token.exchange,
+          toBlock: token.to_block,
+        }),
+      })),
+      include: 'percent_change',
+      toJSON: () => ({
+        tokens: tokens.map((token) => ({
+          tokenAddress: token.address,
+          exchange: token.exchange,
+          toBlock: token.to_block,
+        })),
+        include: 'percent_change',
       }),
-      catchError(this.handleError(config.url, fullConfig)),
+    };
+
+    return from(
+      Moralis.EvmApi.token.getMultipleTokenPrices(request, body),
+    ).pipe(
+      map((response) => response.raw as TokenPrice[]),
+      catchError(this.handleError('getMultipleTokenPrices')),
     );
   }
 
-  private getHeaders(): Record<string, string> {
-    return {
-      'X-API-Key': this.apiKey,
-      Accept: 'application/json',
-      'Content-Type': 'application/json',
-    };
+  getTokenMetadata(
+    chain: string,
+    addresses: string[],
+  ): Observable<TokenMetadata[]> {
+    this.logger.info('Fetching token metadata', 'MoralisService', {
+      chain,
+      addresses,
+    });
+    return from(
+      Moralis.EvmApi.token.getTokenMetadata({
+        addresses,
+        chain: this.validateChain(chain),
+      }),
+    ).pipe(
+      map((response) => response.raw as TokenMetadata[]),
+      catchError(this.handleError('getTokenMetadata')),
+    );
   }
 
   private validateChain(chain: string): string {
@@ -118,18 +130,11 @@ export class MoralisService {
     return chainId;
   }
 
-  private handleError(operation: string, config: AxiosRequestConfig) {
-    return (error: AxiosError): Observable<never> => {
+  private handleError(operation: string) {
+    return (error: any): Observable<never> => {
       this.logger.error(`${operation} failed`, 'MoralisService', {
         error: error.message,
-        status: error.response?.status,
-        data: error.response?.data,
-        config: {
-          method: config.method,
-          url: config.url,
-          params: config.params,
-          data: config.data,
-        },
+        stack: error.stack,
       });
       return throwError(
         () =>
@@ -141,10 +146,40 @@ export class MoralisService {
     };
   }
 
-  private logSuccessfulRequest(url: string, data: any): void {
-    this.logger.debug(`Request successful: ${url}`, 'MoralisService', {
-      dataPreview: this.truncateData(data),
+  private logServiceInitialization(): void {
+    this.logger.info('MoralisService initialized', 'MoralisService', {
+      baseUrl: this.baseUrl,
+      chains: Object.keys(this.chains),
+      apiKeyPresent: !!this.apiKey,
     });
+  }
+
+  testApiConnection(): Observable<any> {
+    this.logger.info('Starting API connection test', 'MoralisService');
+    return this.getTokenPrice(
+      'ethereum',
+      '0x7d1afa7b718fb893db30a3abc0cfc608aacfebb0',
+    ).pipe(
+      map((response) => {
+        this.logger.info('API connection test successful', 'MoralisService', {
+          data: this.truncateData(response),
+        });
+        return response;
+      }),
+      catchError((error: any) => {
+        this.logger.error('API connection test failed', 'MoralisService', {
+          error: error.message,
+          stack: error.stack,
+        });
+        return throwError(
+          () =>
+            new HttpException(
+              'API connection test failed',
+              HttpStatus.INTERNAL_SERVER_ERROR,
+            ),
+        );
+      }),
+    );
   }
 
   private truncateData(data: any): any {
@@ -165,13 +200,5 @@ export class MoralisService {
       return value.substring(0, 47) + '...';
     }
     return value;
-  }
-
-  private logServiceInitialization(): void {
-    this.logger.info('MoralisService initialized', 'MoralisService', {
-      baseUrl: this.baseUrl,
-      chains: Object.keys(this.chains),
-      apiKeyPresent: !!this.apiKey,
-    });
   }
 }

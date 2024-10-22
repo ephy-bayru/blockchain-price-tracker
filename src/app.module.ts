@@ -4,7 +4,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_INTERCEPTOR, APP_GUARD } from '@nestjs/core';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { CacheModule } from '@nestjs/cache-manager';
-
+import { HttpModule } from '@nestjs/axios'; // Add this import
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { CommonModule } from './common/common.module';
@@ -12,7 +12,6 @@ import { DatabaseModule } from './core/database/database.module';
 import { SharedModule } from './shared/shared.module';
 import { HealthModule } from './modules/health/health.module';
 import { PriceTrackerModule } from './modules/price-tracker/price-tracker.module';
-
 import { LoggingInterceptor } from './common/services/logging.interceptor';
 import appConfig from './config/app.config';
 import throttlerConfig from './config/throttler.config';
@@ -38,6 +37,7 @@ import { SwapModule } from './modules/swap/swap.module';
     CacheModule.register({
       isGlobal: true,
     }),
+    HttpModule,
     DatabaseModule,
     CommonModule,
     SharedModule,
