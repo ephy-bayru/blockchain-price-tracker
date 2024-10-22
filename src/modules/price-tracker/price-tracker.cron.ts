@@ -2,196 +2,145 @@ import { Injectable, OnModuleInit } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { ConfigService } from '@nestjs/config';
 import { LoggerService } from 'src/common/services/logger.service';
+import { MoralisConfigType } from 'src/config/moralis.config';
 import { PriceTrackerService } from './services/price-tracker.service';
+
+interface TrackedToken {
+  address: string;
+  chain: string;
+}
 
 @Injectable()
 export class PriceTrackerCron implements OnModuleInit {
-  private readonly trackedTokens: { [chain: string]: string[] };
-  private readonly nativeTokens: { [chain: string]: string };
-  private readonly supportedChains = ['ethereum', 'polygon'];
+  private readonly trackedTokens: TrackedToken[];
+  private initialized = false;
+  private readonly context = 'PriceTrackerCron';
 
   constructor(
     private readonly priceTrackerService: PriceTrackerService,
     private readonly configService: ConfigService,
     private readonly logger: LoggerService,
   ) {
-    this.trackedTokens = this.parseJsonConfig('TRACKED_TOKENS');
-    this.nativeTokens = {
-      ethereum: '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2', // WETH contract address
-      polygon: '0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270', // WMATIC contract address
-    };
-    this.validateConfiguration();
-    this.logConfiguration();
+    this.trackedTokens = this.loadTrackedTokens();
   }
 
-  private parseJsonConfig(key: string): any {
-    const configValue = this.configService.get<string>(key);
-    try {
-      const parsedValue = JSON.parse(configValue);
-      this.logger.debug(
-        `Successfully parsed ${key} configuration`,
-        'PriceTrackerCron',
-        { parsedValue },
-      );
-      return parsedValue;
-    } catch (error) {
-      this.logger.error(
-        `Failed to parse ${key} configuration`,
-        'PriceTrackerCron',
-        { error: error.message, rawValue: configValue },
-      );
-      return {};
+  private loadTrackedTokens(): TrackedToken[] {
+    const config = this.configService.get<MoralisConfigType>('moralis');
+    if (!config) {
+      throw new Error('Moralis configuration not found');
     }
+
+    const tokens: TrackedToken[] = [];
+
+    // Add tokens from tracked tokens config
+    Object.entries(config.trackedTokens).forEach(([chain, addresses]) => {
+      addresses.forEach((address) => {
+        tokens.push({ chain, address });
+      });
+    });
+
+    // Add native tokens
+    Object.entries(config.nativeTokens).forEach(([chain, address]) => {
+      tokens.push({ chain, address });
+    });
+
+    if (!tokens.length) {
+      throw new Error('No tokens configured for tracking');
+    }
+
+    return tokens;
   }
 
-  async onModuleInit() {
-    this.logger.info('Initializing PriceTrackerCron', 'PriceTrackerCron');
-    await this.initializeTokens();
+  async onModuleInit(): Promise<void> {
+    try {
+      await this.initializeTracking();
+      this.initialized = true;
+      this.logInitializationSuccess();
+    } catch (error) {
+      this.logInitializationError(error);
+      throw error;
+    }
   }
 
   @Cron(CronExpression.EVERY_5_MINUTES)
-  async handleCron() {
-    this.logger.info('Starting price tracking cron job', 'PriceTrackerCron');
-    const startTime = Date.now();
-    await this.trackAllChainPrices();
-    const duration = Date.now() - startTime;
-    this.logger.info('Price tracking cron job completed', 'PriceTrackerCron', {
-      durationMs: duration,
-    });
+  async trackPrices(): Promise<void> {
+    if (!this.initialized) {
+      this.logger.warn(
+        'Skipping price tracking - not initialized',
+        this.context,
+      );
+      return;
+    }
+
+    const tokensByChain = this.groupTokensByChain();
+    await this.trackPricesForAllChains(tokensByChain);
   }
 
-  private validateConfiguration() {
-    for (const chain of Object.keys(this.trackedTokens)) {
-      if (!this.supportedChains.includes(chain)) {
-        this.logger.warn(
-          `Unsupported chain in tracked tokens: ${chain}`,
-          'PriceTrackerCron',
-          { supportedChains: this.supportedChains },
-        );
-        delete this.trackedTokens[chain];
+  private groupTokensByChain(): Map<string, string[]> {
+    return this.trackedTokens.reduce((chains, token) => {
+      if (!chains.has(token.chain)) {
+        chains.set(token.chain, []);
+      }
+      chains.get(token.chain).push(token.address);
+      return chains;
+    }, new Map<string, string[]>());
+  }
+
+  private async initializeTracking(): Promise<void> {
+    this.logger.debug('Initializing price tracking...', this.context, {
+      tokens: this.trackedTokens.map((t) => ({
+        chain: t.chain,
+        address: t.address,
+      })),
+    });
+
+    const tokensByChain = this.groupTokensByChain();
+    await this.trackPricesForAllChains(tokensByChain);
+  }
+
+  private async trackPricesForAllChains(
+    tokensByChain: Map<string, string[]>,
+  ): Promise<void> {
+    for (const [chain, addresses] of tokensByChain.entries()) {
+      try {
+        await this.priceTrackerService.trackPrices(addresses, chain);
+        this.logTrackingSuccess(chain, addresses.length);
+      } catch (error) {
+        this.logTrackingError(chain, addresses, error);
       }
     }
-    this.logger.info('Configuration validated', 'PriceTrackerCron', {
-      validatedChains: Object.keys(this.trackedTokens),
+  }
+
+  private logInitializationSuccess(): void {
+    this.logger.info('Price tracking initialized', this.context, {
+      tokenCount: this.trackedTokens.length,
+      chains: [...new Set(this.trackedTokens.map((t) => t.chain))],
     });
   }
 
-  private logConfiguration() {
-    this.logger.debug('PriceTrackerCron configuration', 'PriceTrackerCron', {
-      trackedTokens: this.trackedTokens,
-      nativeTokens: this.nativeTokens,
-      supportedChains: this.supportedChains,
+  private logInitializationError(error: Error): void {
+    this.logger.error('Failed to initialize price tracking', this.context, {
+      error: error.message,
+      stack: error.stack,
     });
   }
 
-  private async initializeTokens() {
-    this.logger.info('Starting token initialization', 'PriceTrackerCron');
-    for (const chain of this.supportedChains) {
-      await this.initializeChainTokens(chain);
-    }
-    this.logger.info('Token initialization completed', 'PriceTrackerCron');
-  }
-
-  private async initializeChainTokens(chain: string) {
-    const allTokens = this.getAllTokensForChain(chain);
-    this.logger.debug(
-      `Initializing tokens for chain: ${chain}`,
-      'PriceTrackerCron',
-      { tokenCount: allTokens.length },
-    );
-    const initializationPromises = allTokens.map((tokenAddress) =>
-      this.ensureTokenExists(tokenAddress, chain),
-    );
-    const results = await Promise.allSettled(initializationPromises);
-    const succeeded = results.filter((r) => r.status === 'fulfilled').length;
-    const failed = results.filter((r) => r.status === 'rejected').length;
-    this.logger.info(
-      `Token initialization results for ${chain}`,
-      'PriceTrackerCron',
-      { succeeded, failed },
-    );
-  }
-
-  private async ensureTokenExists(tokenAddress: string, chain: string) {
-    try {
-      const price = await this.priceTrackerService.getLatestPrice(
-        tokenAddress,
-        chain,
-      );
-      if (!price) {
-        this.logger.debug(
-          `Token not found, creating new token`,
-          'PriceTrackerCron',
-          { tokenAddress, chain },
-        );
-        await this.priceTrackerService.createToken(tokenAddress, chain);
-        this.logger.info(`Created new token`, 'PriceTrackerCron', {
-          tokenAddress,
-          chain,
-        });
-      } else {
-        this.logger.debug(`Token already exists`, 'PriceTrackerCron', {
-          tokenAddress,
-          chain,
-        });
-      }
-    } catch (error) {
-      this.logger.error(`Failed to ensure token exists`, 'PriceTrackerCron', {
-        tokenAddress,
-        chain,
-        error: error.message,
-        stack: error.stack,
-      });
-    }
-  }
-
-  private async trackAllChainPrices() {
-    for (const chain of this.supportedChains) {
-      await this.trackChainPrices(chain);
-    }
-  }
-
-  private async trackChainPrices(chain: string) {
-    const allTokens = this.getAllTokensForChain(chain);
-    this.logger.debug(`Tracking prices for ${chain}`, 'PriceTrackerCron', {
-      tokens: allTokens,
-    });
-    try {
-      const result = await this.priceTrackerService.trackPrices(
-        allTokens,
-        chain,
-      );
-      this.logger.info(
-        `Completed tracking prices for ${chain}`,
-        'PriceTrackerCron',
-        {
-          chain,
-          successCount: result.success,
-          failureCount: result.failed,
-          totalTokens: allTokens.length,
-        },
-      );
-    } catch (error) {
-      this.logger.error(
-        `Error tracking prices for ${chain}`,
-        'PriceTrackerCron',
-        {
-          error: error.message,
-          stack: error.stack,
-        },
-      );
-    }
-  }
-
-  private getAllTokensForChain(chain: string): string[] {
-    const tokens = [...(this.trackedTokens[chain] || [])];
-    if (this.nativeTokens[chain]) {
-      tokens.push(this.nativeTokens[chain]);
-    }
-    this.logger.debug(`Retrieved tokens for chain`, 'PriceTrackerCron', {
+  private logTrackingSuccess(chain: string, tokenCount: number): void {
+    this.logger.debug('Prices tracked successfully', this.context, {
       chain,
-      tokenCount: tokens.length,
+      tokenCount,
     });
-    return tokens;
+  }
+
+  private logTrackingError(
+    chain: string,
+    addresses: string[],
+    error: Error,
+  ): void {
+    this.logger.error('Failed to track prices', this.context, {
+      error: error.message,
+      chain,
+      addresses,
+    });
   }
 }
