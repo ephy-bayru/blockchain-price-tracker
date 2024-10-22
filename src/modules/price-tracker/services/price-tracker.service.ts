@@ -1,4 +1,9 @@
-import { Injectable, Inject, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  Inject,
+  NotFoundException,
+  OnModuleInit,
+} from '@nestjs/common';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { Cache } from 'cache-manager';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -17,10 +22,10 @@ import {
   PaginationOptions,
   PaginationResult,
 } from 'src/common/interfaces/IPagination';
-import { TokenPrice } from 'src/shared/interfaces/IToken';
+import { TokenPrice, TokenPriceRequest } from 'src/shared/interfaces/IToken';
 
 @Injectable()
-export class PriceTrackerService {
+export class PriceTrackerService implements OnModuleInit {
   private readonly significantChangeThreshold: number;
   private readonly cacheDuration: number;
   private readonly maxRetries: number = 3;
@@ -48,6 +53,9 @@ export class PriceTrackerService {
     this.logServiceInitialization();
   }
 
+  async onModuleInit() {
+    await this.testMoralisConnection();
+  }
   private logServiceInitialization() {
     this.logger.info('PriceTrackerService initialized', 'PriceTrackerService', {
       significantChangeThreshold: this.significantChangeThreshold,
@@ -84,8 +92,11 @@ export class PriceTrackerService {
     tokenAddresses: string[],
   ): Promise<TokenPrice[]> {
     try {
+      const tokens: TokenPriceRequest[] = tokenAddresses.map((address) => ({
+        address,
+      }));
       return await firstValueFrom(
-        this.moralisService.getMultipleTokenPrices(chain, tokenAddresses).pipe(
+        this.moralisService.getMultipleTokenPrices(chain, tokens).pipe(
           retry({
             count: this.maxRetries,
             delay: this.retryDelay,
@@ -255,8 +266,9 @@ export class PriceTrackerService {
     transactionManager: EntityManager,
   ): Promise<Token> {
     try {
-      const tokenDetails = await firstValueFrom(
-        this.moralisService.getTokenMetadata(chain, address).pipe(
+      // Fetching the token metadata, which returns an array
+      const [tokenDetails] = await firstValueFrom(
+        this.moralisService.getTokenMetadata(chain, [address]).pipe(
           retry({
             count: this.maxRetries,
             delay: this.retryDelay,
@@ -276,6 +288,13 @@ export class PriceTrackerService {
           }),
         ),
       );
+
+      // Ensure tokenDetails exists
+      if (!tokenDetails) {
+        throw new Error(`Token metadata not found for address: ${address}`);
+      }
+
+      // Creating the token entity using the extracted token details
       const token = transactionManager.create(Token, {
         address,
         chain,
@@ -285,6 +304,7 @@ export class PriceTrackerService {
           ? parseInt(tokenDetails.decimals, 10)
           : 18,
       });
+
       return transactionManager.save(Token, token);
     } catch (error) {
       this.logger.error('Failed to create new token', 'PriceTrackerService', {
@@ -409,15 +429,22 @@ export class PriceTrackerService {
 
   async createToken(address: string, chain: string): Promise<Token> {
     try {
-      const tokenDetails = await firstValueFrom(
-        this.moralisService.getTokenMetadata(chain, address),
+      // Fetching token metadata, which returns an array
+      const [tokenDetails] = await firstValueFrom(
+        this.moralisService.getTokenMetadata(chain, [address]),
       );
 
+      // Ensure tokenDetails exists
+      if (!tokenDetails) {
+        throw new Error(`Token metadata not found for address: ${address}`);
+      }
+
+      // Creating the token entity using the extracted token details
       const token = this.tokenRepository.create({
         address,
         chain,
-        name: tokenDetails.name,
-        symbol: tokenDetails.symbol,
+        name: tokenDetails.name || 'Unknown',
+        symbol: tokenDetails.symbol || 'UNKNOWN',
         decimals: tokenDetails.decimals
           ? parseInt(tokenDetails.decimals, 10)
           : null,
@@ -549,5 +576,43 @@ export class PriceTrackerService {
       );
       throw error;
     }
+  }
+
+  private async testMoralisConnection() {
+    try {
+      this.logger.info('Testing Moralis API connection', 'PriceTrackerService');
+      const result = await firstValueFrom(
+        this.moralisService.testApiConnection(),
+      );
+      this.logger.info(
+        'Moralis API connection test successful',
+        'PriceTrackerService',
+        {
+          result: this.truncateResult(result),
+        },
+      );
+    } catch (error) {
+      this.logger.error(
+        'Moralis API connection test failed',
+        'PriceTrackerService',
+        {
+          error: error.message,
+          stack: error.stack,
+        },
+      );
+    }
+  }
+
+  private truncateResult(result: any): any {
+    if (typeof result === 'object') {
+      return Object.keys(result).reduce((acc, key) => {
+        acc[key] =
+          typeof result[key] === 'string' && result[key].length > 50
+            ? result[key].substring(0, 47) + '...'
+            : result[key];
+        return acc;
+      }, {});
+    }
+    return result;
   }
 }

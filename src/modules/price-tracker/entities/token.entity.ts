@@ -6,18 +6,16 @@ import {
   UpdateDateColumn,
   OneToMany,
   Index,
-  Unique,
 } from 'typeorm';
 import { Price } from './price.entity';
 
 @Entity('tokens')
-@Unique(['address', 'chain'])
 export class Token {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
+  @Index('IDX_token_address_chain', { unique: true })
   @Column()
-  @Index({ unique: true })
   address: string;
 
   @Column()
@@ -27,18 +25,17 @@ export class Token {
   name: string;
 
   @Column()
-  @Index()
   chain: string;
 
-  @Column({ nullable: true, type: 'int' })
-  decimals: number | null;
+  @Column({ nullable: true })
+  decimals: number;
 
   @OneToMany(() => Price, (price) => price.token)
   prices: Price[];
 
-  @CreateDateColumn()
+  @CreateDateColumn({ type: 'timestamp' })
   createdAt: Date;
 
-  @UpdateDateColumn()
+  @UpdateDateColumn({ type: 'timestamp' })
   updatedAt: Date;
 }

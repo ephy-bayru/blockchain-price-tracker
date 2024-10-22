@@ -1,177 +1,178 @@
-import { Injectable, HttpException, HttpStatus } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { HttpService } from '@nestjs/axios';
-import { Observable, catchError, map, throwError } from 'rxjs';
-import { AxiosError, AxiosRequestConfig } from 'axios';
-import { LoggerService } from 'src/common/services/logger.service';
 import {
-  TokenMetadata,
+  Injectable,
+  OnModuleInit,
+  HttpException,
+  HttpStatus,
+} from '@nestjs/common';
+import { Observable, defer, throwError } from 'rxjs';
+import { map, catchError, retryWhen } from 'rxjs/operators';
+import Moralis from 'moralis';
+import {
+  GetTokenPriceResponseAdapter,
+  GetTokenMetadataResponseAdapter,
+  EvmChain,
+} from '@moralisweb3/common-evm-utils';
+import {
   TokenPrice,
-  TokenPriceRequest,
-} from '../interfaces/IToken';
+  TokenMetadata,
+  MoralisError,
+} from '@/shared/interfaces/IToken';
+import { LoggerService } from '@/common/services/logger.service';
+import { ChainUtilsHelper } from '../helpers/chain-utils.helper';
+import { ErrorHandlingHelper } from '../helpers/error-handling.helper';
+import { GeneralUtilsHelper } from '../helpers/general-utils.helper';
+import { MoralisInitializerHelper } from '../helpers/moralis-initializer.helper';
+import { RateLimitHelper } from '../helpers/rate-limit.helper';
+import { ResponseMapperHelper } from '../helpers/response-mapper.helper';
+import { RetryHelper } from '../helpers/retry.helper';
 
 @Injectable()
-export class MoralisService {
-  private readonly apiKey: string;
-  private readonly baseUrl: string = 'https://deep-index.moralis.io/api/v2.2';
-  private readonly chains: Record<string, string>;
-
+export class MoralisService implements OnModuleInit {
   constructor(
-    private readonly configService: ConfigService,
-    private readonly httpService: HttpService,
+    private readonly chainUtils: ChainUtilsHelper,
+    private readonly errorHelper: ErrorHandlingHelper,
+    private readonly utils: GeneralUtilsHelper,
+    private readonly initializer: MoralisInitializerHelper,
+    private readonly rateLimitHelper: RateLimitHelper,
+    private readonly responseMapper: ResponseMapperHelper,
+    private readonly retryHelper: RetryHelper,
     private readonly logger: LoggerService,
-  ) {
-    this.apiKey = this.configService.get<string>('MORALIS_API_KEY');
-    this.chains = {
-      ethereum: 'eth',
-      polygon: 'polygon',
-    };
+  ) {}
 
-    this.logServiceInitialization();
+  async onModuleInit(): Promise<void> {
+    await this.initializer.initialize();
   }
 
-  getTokenPrice(chain: string, address: string): Observable<TokenPrice> {
-    this.logger.info('Fetching token price', 'MoralisService', {
+  getTokenPrice(chain: string, address: string): Observable<TokenPrice | null> {
+    this.logger.debug('Fetching token price', 'MoralisService', {
       chain,
-      address,
-    });
-    return this.makeRequest<TokenPrice>({
-      method: 'get',
-      url: `/erc20/${address}/price`,
-      params: { chain: this.validateChain(chain), include: 'percent_change' },
-    });
-  }
-
-  getMultipleTokenPrices(
-    chain: string,
-    addresses: string[],
-  ): Observable<TokenPrice[]> {
-    this.logger.info('Fetching multiple token prices', 'MoralisService', {
-      chain,
-      addressCount: addresses.length,
-    });
-    const tokens: TokenPriceRequest[] = addresses.map((address) => ({
-      token_address: address,
-    }));
-    return this.makeRequest<TokenPrice[]>({
-      method: 'post',
-      url: '/erc20/prices',
-      data: { tokens },
-      params: { chain: this.validateChain(chain), include: 'percent_change' },
-    });
-  }
-
-  getTokenMetadata(chain: string, address: string): Observable<TokenMetadata> {
-    this.logger.info('Fetching token metadata', 'MoralisService', {
-      chain,
-      address,
-    });
-    return this.makeRequest<TokenMetadata>({
-      method: 'get',
-      url: `/erc20/${address}`,
-      params: { chain: this.validateChain(chain) },
-    });
-  }
-
-  private makeRequest<T>(config: AxiosRequestConfig): Observable<T> {
-    const fullConfig: AxiosRequestConfig = {
-      ...config,
-      url: `${this.baseUrl}${config.url}`,
-      headers: this.getHeaders(),
-    };
-
-    // Log full URL, method, headers, and request data
-    this.logger.debug('Making API request', 'MoralisService', {
-      method: fullConfig.method,
-      url: fullConfig.url,
-      headers: fullConfig.headers,
-      params: fullConfig.params,
-      data: fullConfig.data || null,
+      address: this.utils.truncateAddress(address),
     });
 
-    return this.httpService.request<T>(fullConfig).pipe(
-      map((response) => {
-        this.logSuccessfulRequest(config.url, response.data);
-        return response.data;
+    return defer(async () => {
+      await this.rateLimitHelper.checkRateLimit();
+
+      try {
+        const chainHex = this.chainUtils.getChainHex(chain);
+        const evmChain = EvmChain.create(chainHex);
+        const formattedAddress = this.chainUtils.formatAddress(address);
+
+        const response = await Moralis.EvmApi.token.getTokenPrice({
+          chain: evmChain.apiHex,
+          address: formattedAddress,
+          include: 'percent_change',
+        });
+
+        this.logger.info('Received token price response', 'MoralisService', {
+          chain,
+          address: formattedAddress,
+          response: response.toJSON(), // Log the full response as JSON
+        });
+
+        return response;
+      } catch (error) {
+        const moralisError = error as MoralisError;
+        if (
+          moralisError.code === 'C0006' &&
+          moralisError.message.includes('No liquidity pools found')
+        ) {
+          this.logger.warn(
+            'No liquidity pools found for token',
+            'MoralisService',
+            {
+              chain,
+              address,
+            },
+          );
+          // Return null instead of throwing error
+          return null;
+        }
+        throw error;
+      }
+    }).pipe(
+      retryWhen(this.retryHelper.createRetryStrategy()),
+      map((response: GetTokenPriceResponseAdapter | null) => {
+        if (!response) {
+          return null;
+        }
+        // Log the mapped response as well
+        const mappedResponse =
+          this.responseMapper.mapTokenPriceResponse(response);
+        this.logger.info('Mapped token price response', 'MoralisService', {
+          chain,
+          address,
+          mappedResponse,
+        });
+        return mappedResponse;
       }),
-      catchError(this.handleError(config.url, fullConfig)),
+      catchError((error) => {
+        if (error instanceof HttpException) {
+          return throwError(() => error);
+        }
+        return this.errorHelper.handleError('getTokenPrice', error);
+      }),
     );
   }
 
-  private getHeaders(): Record<string, string> {
-    return {
-      'X-API-Key': this.apiKey,
-      Accept: 'application/json',
-      'Content-Type': 'application/json',
-    };
-  }
-
-  private validateChain(chain: string): string {
-    const chainId = this.chains[chain];
-    if (!chainId) {
-      this.logger.error('Unsupported chain', 'MoralisService', { chain });
-      throw new HttpException(
-        `Unsupported chain: ${chain}`,
-        HttpStatus.BAD_REQUEST,
-      );
-    }
-    return chainId;
-  }
-
-  private handleError(operation: string, config: AxiosRequestConfig) {
-    return (error: AxiosError): Observable<never> => {
-      this.logger.error(`${operation} failed`, 'MoralisService', {
-        error: error.message,
-        status: error.response?.status,
-        data: error.response?.data,
-        config: {
-          method: config.method,
-          url: config.url,
-          params: config.params,
-          data: config.data,
-        },
-      });
-      return throwError(
-        () =>
-          new HttpException(
-            'An error occurred while fetching data from Moralis',
-            HttpStatus.INTERNAL_SERVER_ERROR,
-          ),
-      );
-    };
-  }
-
-  private logSuccessfulRequest(url: string, data: any): void {
-    this.logger.debug(`Request successful: ${url}`, 'MoralisService', {
-      dataPreview: this.truncateData(data),
+  getTokenMetadata(chain: string, address: string): Observable<TokenMetadata> {
+    this.logger.debug('Fetching token metadata', 'MoralisService', {
+      chain,
+      address: this.utils.truncateAddress(address),
     });
-  }
 
-  private truncateData(data: any): any {
-    if (Array.isArray(data)) {
-      return { arrayLength: data.length, sample: data.slice(0, 2) };
-    }
-    if (typeof data === 'object' && data !== null) {
-      return Object.keys(data).reduce((acc, key) => {
-        acc[key] = this.truncateValue(data[key]);
-        return acc;
-      }, {});
-    }
-    return this.truncateValue(data);
-  }
+    return defer(async () => {
+      await this.rateLimitHelper.checkRateLimit();
 
-  private truncateValue(value: any): any {
-    if (typeof value === 'string' && value.length > 50) {
-      return value.substring(0, 47) + '...';
-    }
-    return value;
-  }
+      try {
+        const chainHex = this.chainUtils.getChainHex(chain);
+        const evmChain = EvmChain.create(chainHex);
+        const formattedAddress = this.chainUtils.formatAddress(address);
 
-  private logServiceInitialization(): void {
-    this.logger.info('MoralisService initialized', 'MoralisService', {
-      baseUrl: this.baseUrl,
-      chains: Object.keys(this.chains),
-      apiKeyPresent: !!this.apiKey,
-    });
+        const response = await Moralis.EvmApi.token.getTokenMetadata({
+          chain: evmChain.apiHex,
+          addresses: [formattedAddress],
+        });
+
+        if (!response.toJSON()[0]) {
+          throw new HttpException(
+            'Token metadata not found',
+            HttpStatus.NOT_FOUND,
+          );
+        }
+
+        this.logger.info('Received token metadata response', 'MoralisService', {
+          chain,
+          address: formattedAddress,
+          response: response.toJSON(), // Log the full response as JSON
+        });
+
+        return response;
+      } catch (error) {
+        const moralisError = error as MoralisError;
+        if (moralisError.code === 'C0006') {
+          throw new HttpException(
+            'Token not found on chain',
+            HttpStatus.NOT_FOUND,
+          );
+        }
+        throw error;
+      }
+    }).pipe(
+      retryWhen(this.retryHelper.createRetryStrategy()),
+      map((response: GetTokenMetadataResponseAdapter) => {
+        // Log the mapped response as well
+        const mappedResponse =
+          this.responseMapper.mapTokenMetadataResponse(response);
+        this.logger.info('Mapped token metadata response', 'MoralisService', {
+          chain,
+          address,
+          mappedResponse,
+        });
+        return mappedResponse;
+      }),
+      catchError((error) =>
+        this.errorHelper.handleError('getTokenMetadata', error),
+      ),
+    );
   }
 }
