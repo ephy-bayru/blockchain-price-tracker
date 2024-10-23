@@ -15,6 +15,7 @@ export class PriceTrackerCron implements OnModuleInit {
   private readonly trackedTokens: TrackedToken[];
   private initialized = false;
   private readonly context = 'PriceTrackerCron';
+  private executionCount = 0;
 
   constructor(
     private readonly priceTrackerService: PriceTrackerService,
@@ -64,6 +65,12 @@ export class PriceTrackerCron implements OnModuleInit {
 
   @Cron(CronExpression.EVERY_5_MINUTES)
   async trackPrices(): Promise<void> {
+    this.executionCount++;
+    this.logger.debug(
+      `Executing scheduled price tracking (#${this.executionCount})`,
+      this.context,
+    );
+
     if (!this.initialized) {
       this.logger.warn(
         'Skipping price tracking - not initialized',
@@ -74,6 +81,11 @@ export class PriceTrackerCron implements OnModuleInit {
 
     const tokensByChain = this.groupTokensByChain();
     await this.trackPricesForAllChains(tokensByChain);
+
+    this.logger.debug(
+      `Scheduled price tracking completed (#${this.executionCount})`,
+      this.context,
+    );
   }
 
   private groupTokensByChain(): Map<string, string[]> {
