@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { DataSource, FindOptionsWhere } from 'typeorm';
+import { DataSource } from 'typeorm';
 import { LoggerService } from 'src/common/services/logger.service';
 import { BaseRepository } from 'src/core/repository/base.repository';
 import { UserPriceAlert } from '../entities/user-price-alert.entity';
@@ -29,8 +29,7 @@ export class UserPriceAlertRepository extends BaseRepository<UserPriceAlert> {
     return this.findAll({
       ...paginationOptions,
       options: {
-        ...paginationOptions.options,
-        where: { userEmail },
+        where: { userEmail, isActive: true },
         relations: ['token'],
       },
     });
@@ -47,12 +46,12 @@ export class UserPriceAlertRepository extends BaseRepository<UserPriceAlert> {
   }
 
   async countActiveAlertsByUser(userEmail: string): Promise<number> {
-    return this.count({
-      where: { userEmail, isActive: true } as FindOptionsWhere<UserPriceAlert>,
+    return this.repository.count({
+      where: { userEmail, isActive: true },
     });
   }
 
   async deactivateAlert(id: string): Promise<void> {
-    await this.update(id, { isActive: false });
+    await this.repository.update(id, { isActive: false });
   }
 }
