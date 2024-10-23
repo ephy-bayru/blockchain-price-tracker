@@ -31,7 +31,7 @@ export class SwapService {
     );
     this.btcAddress = this.configService.get<string>(
       'BTC_ADDRESS',
-      '0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599',
+      '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48',
     );
 
     this.logger.log('SwapService initialized', 'SwapService', {
@@ -63,6 +63,16 @@ export class SwapService {
         ),
       ]);
 
+      if (!ethPrice || !btcPrice) {
+        throw new Error('No price data found for tokens');
+      }
+
+      this.logger.debug('Fetched latest prices', 'SwapService', {
+        ethPrice,
+        btcPrice,
+      });
+
+      // Proceed with swap calculation
       const ethAmount = swapRequest.amount;
       const ethValueUsd = ethAmount * ethPrice.usdPrice;
       const btcAmount = ethValueUsd / btcPrice.usdPrice;
@@ -83,7 +93,8 @@ export class SwapService {
       return response;
     } catch (error) {
       this.logger.error(`Error calculating swap`, 'SwapService', {
-        error,
+        error: error.message,
+        stack: error.stack,
         swapRequest,
       });
       if (error instanceof BadRequestException) {
@@ -95,6 +106,9 @@ export class SwapService {
 
   private validateSwapRequest(swapRequest: SwapRequestDto): void {
     if (swapRequest.amount <= 0) {
+      this.logger.warn('Swap amount must be greater than 0', 'SwapService', {
+        amount: swapRequest.amount,
+      });
       throw new BadRequestException('Swap amount must be greater than 0');
     }
   }
