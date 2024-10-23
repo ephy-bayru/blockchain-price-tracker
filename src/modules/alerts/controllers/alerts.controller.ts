@@ -33,7 +33,7 @@ export class AlertsController {
     @Body(new ValidationPipe({ transform: true }))
     createAlertDto: CreateUserAlertDto,
   ): Promise<AlertResponseDto> {
-    return await this.alertsService.createUserAlert(createAlertDto);
+    return this.alertsService.createUserAlert(createAlertDto);
   }
 
   @Get()
@@ -42,12 +42,12 @@ export class AlertsController {
     @Query('email') userEmail: string,
     @Query('page', new ValidationPipe({ transform: true })) page: number = 1,
     @Query('limit', new ValidationPipe({ transform: true })) limit: number = 10,
-  ) {
+  ): Promise<PaginationOptions<AlertResponseDto>> {
     const paginationOptions: PaginationOptions<UserPriceAlert> = {
       page,
       limit,
     };
-    return await this.alertsService.getUserAlerts(userEmail, paginationOptions);
+    return this.alertsService.getUserAlerts(userEmail, paginationOptions);
   }
 
   @Get(':id')
@@ -55,7 +55,7 @@ export class AlertsController {
   async getAlert(
     @Param('id', new ParseUUIDPipe()) id: string,
   ): Promise<AlertResponseDto> {
-    return await this.alertsService.getUserAlert(id);
+    return this.alertsService.getUserAlert(id);
   }
 
   @Delete(':id')

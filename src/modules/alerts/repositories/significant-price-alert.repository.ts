@@ -12,16 +12,21 @@ export class SignificantPriceAlertRepository extends BaseRepository<SignificantP
   }
 
   async findActiveAlerts(): Promise<SignificantPriceAlert[]> {
-    return this.repository.find();
+    // Fetch only alerts that are active
+    return this.repository.find({
+      where: { isActive: true },
+    });
   }
 
   async findAlertByChain(
     chain: ChainEnum,
   ): Promise<SignificantPriceAlert | null> {
-    return this.repository.findOne({ where: { chain } });
+    return this.repository.findOne({
+      where: { chain, isActive: true },
+    });
   }
 
   async updateLastCheckedTime(id: string, lastCheckedAt: Date): Promise<void> {
-    await this.update(id, { lastCheckedAt });
+    await this.repository.update(id, { lastCheckedAt });
   }
 }

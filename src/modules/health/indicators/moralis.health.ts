@@ -4,38 +4,53 @@ import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { LoggerService } from 'src/common/services/logger.service';
 import { firstValueFrom } from 'rxjs';
+import { MoralisConfigType } from '@/config/moralis.config';
 
 @Injectable()
 export class MoralisHealthIndicator extends HealthIndicator {
+  private readonly moralisConfig: MoralisConfigType;
+
   constructor(
-    private http: HttpService,
-    private configService: ConfigService,
-    private logger: LoggerService,
+    private readonly http: HttpService,
+    private readonly configService: ConfigService,
+    private readonly logger: LoggerService,
   ) {
     super();
+    this.moralisConfig = this.configService.get<MoralisConfigType>('moralis');
   }
 
   async checkMoralisApiConnection(): Promise<HealthIndicatorResult> {
-    const moralisApiUrl = this.configService.get<string>('MORALIS_API_URL');
-    const moralisApiKey = this.configService.get<string>('MORALIS_API_KEY');
+    const { baseUrl, apiKey, chains } = this.moralisConfig;
+    const sampleTokenAddress = '0x7d1afa7b718fb893db30a3abc0cfc608aacfebb0';
+    const chain = chains.ethereum;
 
     try {
       await firstValueFrom(
-        this.http.get(moralisApiUrl, {
-          headers: { 'X-API-Key': moralisApiKey },
-        }),
+        this.http.get(
+          `${baseUrl}/erc20/${sampleTokenAddress}/price?chain=${chain}&include=percent_change`,
+          {
+            headers: { 'X-API-Key': apiKey },
+          },
+        ),
       );
 
-      return this.getStatus('moralisApi', true, { url: moralisApiUrl });
+      // If the request is successful, return the health check status as "up"
+      return this.getStatus('moralisApi', true, { url: baseUrl });
     } catch (error) {
       this.logger.error(
         'Moralis API health check failed',
         'MoralisHealthIndicator',
-        { error },
+        {
+          message: error.message,
+          response: error.response ? error.response.data : null,
+          status: error.response ? error.response.status : 'No response status',
+        },
       );
+
       return this.getStatus('moralisApi', false, {
-        url: moralisApiUrl,
-        error: 'Unable to connect to Moralis API',
+        url: baseUrl,
+        error: error.message || 'Unable to connect to Moralis API',
+        statusCode: error.response ? error.response.status : null,
       });
     }
   }

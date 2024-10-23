@@ -10,6 +10,7 @@ import { RetryHelper } from './helpers/retry.helper';
 import { ResponseMapperHelper } from './helpers/response-mapper.helper';
 import { GeneralUtilsHelper } from './helpers/general-utils.helper';
 import { MoralisInitializerHelper } from './helpers/moralis-initializer.helper';
+import { EmailService } from './services/email.service';
 import moralisConfig, { MoralisConfigType } from '../config/moralis.config';
 
 const HELPERS = [
@@ -43,7 +44,8 @@ const HELPERS = [
       },
     },
     MoralisService,
+    EmailService,
   ],
-  exports: [MoralisService],
+  exports: [MoralisService, EmailService],
 })
 export class SharedModule {}

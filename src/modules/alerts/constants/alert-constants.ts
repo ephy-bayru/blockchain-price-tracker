@@ -12,4 +12,5 @@ export const ERROR_MESSAGES = {
   MAX_ALERTS_REACHED: 'Maximum number of alerts reached',
   INVALID_TOKEN: 'Invalid token address',
   INVALID_CHAIN: 'Invalid blockchain specified',
+  TOKEN_NOT_FOUND: 'Token not found',
 };
