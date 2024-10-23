@@ -17,6 +17,9 @@ export class SignificantPriceAlert {
   @Column('decimal', { precision: 5, scale: 2 })
   thresholdPercentage: number;
 
+  @Column({ type: 'boolean', default: true })
+  isActive: boolean;
+
   @Column()
   timeFrame: number; // in minutes
 
